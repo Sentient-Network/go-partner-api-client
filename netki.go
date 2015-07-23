@@ -4,18 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/bitly/go-simplejson"
-	"github.com/op/go-logging"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-)
-
-// Setup Logging
-var log = logging.MustGetLogger("Netki")
-var format = logging.MustStringFormatter(
-	"%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}",
 )
 
 // Define our Error Type
