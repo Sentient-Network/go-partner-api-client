@@ -1,5 +1,7 @@
 ### Go Netki Partner Client
 
+This is an Go implementation of the Netki Partner API Client.
+
 ### Importing
 
     import github.com/netkicorp/go-partner-client
