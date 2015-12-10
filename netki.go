@@ -27,6 +27,30 @@ func (e NetkiError) Error() string {
 	return buffer.String()
 }
 
+// WalletNameLookup resolves an address from a netki address and currency.
+func WalletNameLookup(uri, currency string) (string, error) {
+	apimethod := "https://pubapi.netki.com/api/wallet_lookup"
+	resp, err := http.Get(fmt.Sprintf("%s/%s/%s", apimethod, uri, currency))
+	if err != nil {
+		return "", err
+	}
+
+	j, err := simplejson.NewFromReader(resp.Body)
+	if err != nil {
+		return "", err
+	} else if resp.StatusCode != 200 {
+		return "", fmt.Errorf("Could not resolve netki address")
+	}
+	
+	if msg, err := j.Get("message").String(); msg != "" {
+		return "", fmt.Errorf(msg)
+	} else if err != nil {
+		return "", err
+	}
+	
+	return j.Get("wallet_address").String()
+}
+
 type Partner struct {
 	id, partnerName string
 }
