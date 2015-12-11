@@ -690,3 +690,34 @@ func TestGetWalletNamesZeroWalletCount(t *testing.T) {
 
 	assert.Equal(t, 0, len(wns))
 }
+
+func TestWalletNameLookup(t *testing.T) {
+	uri := "wallet.mattdavid.xyz"
+	currency := "btc"
+	s, err := WalletNameLookup(uri, currency)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Log("Address:", s)
+}
+
+func TestWalletNameLookupBadname(t *testing.T) {
+	uri := "badbad"
+	currency := "btc"
+	s, err := WalletNameLookup(uri, currency)
+	if err == nil {
+		t.Error("Got no error on bad currency")
+	}
+	t.Log("Address:", s)
+}
+
+func TestWalletNameLookupBadCurrency(t *testing.T) {
+	uri := "wallet.mattdavid.xyz"
+	currency := "badbad"
+	s, err := WalletNameLookup(uri, currency)
+	if err == nil {
+		t.Error("Got no error on bad currency")
+	}
+	t.Log("Address:", s)
+}
+
