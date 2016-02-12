@@ -2,9 +2,16 @@ package netki
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"github.com/bitly/go-simplejson"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,13 +48,13 @@ func WalletNameLookup(uri, currency string) (string, error) {
 	} else if resp.StatusCode != 200 {
 		return "", fmt.Errorf("Could not resolve netki address")
 	}
-	
+
 	if msg, err := j.Get("message").String(); msg != "" {
 		return "", fmt.Errorf(msg)
 	} else if err != nil {
 		return "", err
 	}
-	
+
 	return j.Get("wallet_address").String()
 }
 
@@ -88,10 +95,17 @@ type NetkiRequester struct {
 }
 
 type NetkiPartner struct {
-	Requester NetkiRequest
-	PartnerId string
-	ApiKey    string
-	ApiUrl    string
+	Requester     NetkiRequest
+	PartnerId     string
+	ApiKey        string
+	ApiUrl        string
+	UserKey       *ecdsa.PrivateKey
+	KeySigningKey *ecdsa.PublicKey
+	KeySignature  []byte
+}
+
+type EcdsaSig struct {
+	R, S *big.Int
 }
 
 // Utility Functions
@@ -101,6 +115,25 @@ func urlEncode(text string) string {
 		return ""
 	}
 	return result.String()
+}
+
+// Sign Request
+func (n NetkiRequester) SignRequest(uri string, bodyData string, key *ecdsa.PrivateKey) (string, error) {
+	h := sha256.New()
+	r := big.NewInt(0)
+	s := big.NewInt(0)
+
+	h.Write([]byte(uri + bodyData))
+	signDataHash := h.Sum(nil)
+
+	r, s, err := ecdsa.Sign(rand.Reader, key, signDataHash)
+	if err != nil {
+		return "", &NetkiError{"Unable to Sign Data", make([]string, 0)}
+	}
+
+	sequence := EcdsaSig{r, s}
+	encoding, _ := asn1.Marshal(sequence)
+	return hex.EncodeToString(encoding), nil
 }
 
 // Generic Request Handling
@@ -137,8 +170,19 @@ func (n NetkiRequester) ProcessRequest(partner *NetkiPartner, uri string, method
 
 	req, err := http.NewRequest(method, buffer.String(), buf)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Partner-ID", partner.PartnerId)
-	req.Header.Set("Authorization", partner.ApiKey)
+	if partner.PartnerId == "" && partner.UserKey != nil {
+		sig, err := n.SignRequest(buffer.String(), bodyData, partner.UserKey)
+		if err != nil {
+			return &simplejson.Json{}, err
+		}
+		req.Header.Set("X-Identity", partner.GetUserPublicKey())
+		req.Header.Set("X-Signature", sig)
+		req.Header.Set("X-Partner-Key", partner.GetKeySigningKey())
+		req.Header.Set("X-Partner-KeySig", hex.EncodeToString(partner.KeySignature))
+	} else {
+		req.Header.Set("X-Partner-ID", partner.PartnerId)
+		req.Header.Set("Authorization", partner.ApiKey)
+	}
 
 	// See if we have an injected HTTPClient
 	var client *http.Client
@@ -307,6 +351,35 @@ func (w WalletName) Delete(partner *NetkiPartner) error {
 	}
 
 	return nil
+}
+
+// Define NetkiPartner Utility methods
+func (n NetkiPartner) GetUserPublicKey() string {
+	derkey, err := x509.MarshalPKIXPublicKey(&n.UserKey.PublicKey)
+	if err != nil {
+		return ""
+	}
+	return hex.EncodeToString(derkey)
+}
+
+func (n NetkiPartner) GetKeySigningKey() string {
+	derkey, err := x509.MarshalPKIXPublicKey(n.KeySigningKey)
+	if err != nil {
+		return ""
+	}
+	return hex.EncodeToString(derkey)
+}
+
+func (n NetkiPartner) SetUserKey(userKey *ecdsa.PrivateKey) {
+	n.UserKey = userKey
+}
+
+func (n NetkiPartner) SetKeySigningKey(signingKey *ecdsa.PublicKey) {
+	n.KeySigningKey = signingKey
+}
+
+func (n NetkiPartner) SetKeySignature(sig []byte) {
+	n.KeySignature = sig
 }
 
 // Define NetkiPartner methods
@@ -494,4 +567,8 @@ func (n NetkiPartner) GetWalletNames(domain Domain, externalId string) ([]Wallet
 // Constructor / NetkiPartner Factory
 func NewNetkiPartner(partnerId string, apiKey string, apiUrl string) *NetkiPartner {
 	return &NetkiPartner{Requester: new(NetkiRequester), PartnerId: partnerId, ApiKey: apiKey, ApiUrl: apiUrl}
+}
+
+func NewNetkiRemotePartner(apiUrl string, userKey *ecdsa.PrivateKey, keySigningKey *ecdsa.PublicKey, keySignature []byte) *NetkiPartner {
+	return &NetkiPartner{Requester: new(NetkiRequester), ApiUrl: apiUrl, UserKey: userKey, KeySigningKey: keySigningKey, KeySignature: keySignature}
 }

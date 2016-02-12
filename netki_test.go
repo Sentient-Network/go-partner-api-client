@@ -1,14 +1,25 @@
 package netki
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha1"
+	"crypto/x509"
+	"encoding/asn1"
 	"fmt"
 	"github.com/bitly/go-simplejson"
 	"github.com/bmizerany/assert"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 )
+
+type ecdsaSignature struct {
+	R, S *big.Int
+}
 
 // Utility Functions
 func stringInArray(text string, list []string) bool {
@@ -94,6 +105,33 @@ func TestProcessRequest(t *testing.T) {
 	assert.NotEqual(t, nil, result)
 	assert.Equal(t, true, result.Get("success").MustBool())
 	assert.Equal(t, "my message", result.Get("message").MustString())
+}
+
+func TestProcessRequestUserKey(t *testing.T) {
+	server, client := setupHttp(200, "application/json", `{"success":true,"message":"my message"}`)
+	defer server.Close()
+
+	// Create Test Keys
+	userKey := new(ecdsa.PrivateKey)
+	userKey, _ = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	partnerKey := new(ecdsa.PrivateKey)
+	partnerKey, _ = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	// Sign User's Public Key (SHA1 Hash)  with Partner's Key
+	userPubkey, _ := x509.MarshalPKIXPublicKey(&userKey.PublicKey)
+	hash := sha1.New().Sum(userPubkey)
+	r, s, _ := ecdsa.Sign(rand.Reader, partnerKey, hash)
+	sigToMarshal := &ecdsaSignature{R: r, S: s}
+	keySig, _ := asn1.Marshal(sigToMarshal)
+
+	userKeyPartner := &NetkiPartner{UserKey: userKey, KeySigningKey: &partnerKey.PublicKey, KeySignature: keySig}
+
+	requester := &NetkiRequester{HTTPClient: client}
+	result, err := requester.ProcessRequest(userKeyPartner, "http://domain.com/uri", "GET", "")
+
+	assert.Equal(t, nil, err)
+	assert.NotEqual(t, nil, result)
 }
 
 func TestProcessRequestDelete204(t *testing.T) {
@@ -720,4 +758,3 @@ func TestWalletNameLookupBadCurrency(t *testing.T) {
 	}
 	t.Log("Address:", s)
 }
-
