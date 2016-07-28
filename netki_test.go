@@ -146,19 +146,6 @@ func TestProcessRequestDelete204(t *testing.T) {
 	assert.Equal(t, &simplejson.Json{}, result)
 }
 
-func TestProcessRequestBadContentType(t *testing.T) {
-	server, client := setupHttp(200, "text/plain", "")
-	defer server.Close()
-
-	requester := &NetkiRequester{HTTPClient: client}
-	result, err := requester.ProcessRequest(&NetkiPartner{}, "http://domain.com/uri", "GET", "")
-
-	assert.NotEqual(t, nil, err)
-	assert.NotEqual(t, nil, result)
-	assert.Equal(t, &simplejson.Json{}, result)
-	assert.Equal(t, "HTTP Response Contains Invalid Content-Type: text/plain", err.Error())
-}
-
 func TestProcessRequestNotJSONData(t *testing.T) {
 	server, client := setupHttp(200, "application/json", "")
 	defer server.Close()

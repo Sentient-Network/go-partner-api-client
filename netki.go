@@ -203,11 +203,6 @@ func (n NetkiRequester) ProcessRequest(partner *NetkiPartner, uri string, method
 		return &simplejson.Json{}, nil
 	}
 
-	// Validate Content-Type
-	if resp.Header.Get("Content-Type") != "application/json" {
-		return &simplejson.Json{}, &NetkiError{fmt.Sprintf("HTTP Response Contains Invalid Content-Type: %s", resp.Header.Get("Content-Type")), make([]string, 0)}
-	}
-
 	// Close the body when we're done with the function
 	defer resp.Body.Close()
 
